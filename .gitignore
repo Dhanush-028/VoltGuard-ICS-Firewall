@@ -1,0 +1,15 @@
+# Compiled binaries
+parser/modbus_parser
+*.o
+*.out
+
+# Generated data (regenerate via script instead of committing binary blobs)
+traffic_gen/traffic.bin
+traffic_gen/traffic_log.csv
+
+# Python
+__pycache__/
+*.pyc
+
+# OS junk
+.DS_Store
