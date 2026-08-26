@@ -5,21 +5,17 @@ commands, and builds a baseline fluid/pressure physics model.
 
 ## Structure
 
-```
 voltguard/
 ├── traffic_gen/       # generates Modbus/TCP frames (traffic.bin, traffic_log.csv)
 ├── parser/             # C++ parser: decodes MBAP header + PDU
 └── physics_engine/     # pump+pipe pressure model (pipe_model.py)
-```
 
 ## Run it
 
-```bash
 cd traffic_gen && python3 generate_traffic.py
 cd ../parser && g++ -std=c++17 -O2 -Wall -o modbus_parser modbus_parser.cpp
 ./modbus_parser ../traffic_gen/traffic.bin
 cd ../physics_engine && python3 pipe_model.py
-```
 
 ## What it does
 
