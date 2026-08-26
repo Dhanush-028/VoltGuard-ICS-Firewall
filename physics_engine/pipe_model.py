@@ -40,6 +40,7 @@ declaring a fixed number, so the two layers are consistent.
 """
 
 import numpy as np
+import matplotlib.pyplot as plt
 from dataclasses import dataclass
 
 
@@ -137,36 +138,4 @@ def find_max_safe_rpm() -> float:
     Sweeps RPM upward to find where the pipe crosses into CATASTROPHIC
     territory - i.e. derives the real physical RPM ceiling, rather
     than assuming it. Useful for sanity-checking the parser's
-    hardcoded SAFE_MAX_RPM = 3000 heuristic against real physics.
-    """
-    for rpm in np.arange(0, 20000, 10):
-        result = simulate_pump_command(rpm)
-        if result.status == "CATASTROPHIC":
-            return rpm
-    return -1  # never reached burst in range tested
-
-
-def main():
-    print("=== VoltGuard Physics Engine: Week 1 baseline ===\n")
-
-    test_rpms = [500, 1500, 2900, 3000, 3200, 5000, 10000, 50000]
-
-    print("Simulating a range of commanded pump speeds:\n")
-    for rpm in test_rpms:
-        result = simulate_pump_command(rpm)
-        print_result(result)
-
-    print("\n--- Deriving the real physical safe RPM ceiling ---")
-    ceiling = find_max_safe_rpm()
-    print(f"Pipe reaches CATASTROPHIC pressure at ~{ceiling:.0f} RPM "
-          f"(burst rating: {PIPE_BURST_PRESSURE_KPA} kPa)")
-
-    print("\n--- Cross-checking the 50,000 RPM attack scenario ---")
-    attack = simulate_pump_command(50000)
-    print_result(attack)
-    print(f"-> This is {attack.net_pressure_kpa / PIPE_BURST_PRESSURE_KPA:.1f}x "
-          f"the pipe's burst rating. VoltGuard should DROP this packet.")
-
-
-if __name__ == "__main__":
-    main()
+    hardcoded SAFE_MAX_RPM
