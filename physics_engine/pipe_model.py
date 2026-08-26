@@ -138,4 +138,73 @@ def find_max_safe_rpm() -> float:
     Sweeps RPM upward to find where the pipe crosses into CATASTROPHIC
     territory - i.e. derives the real physical RPM ceiling, rather
     than assuming it. Useful for sanity-checking the parser's
-    hardcoded SAFE_MAX_RPM
+    hardcoded SAFE_MAX_RPM.
+    """
+    rpm = 0.0
+    step = 10.0
+    max_rpm_search = 10000.0
+
+    while rpm <= max_rpm_search:
+        result = simulate_pump_command(rpm)
+        if result.status == "CATASTROPHIC":
+            return rpm
+        rpm += step
+
+    return max_rpm_search
+
+
+def plot_pressure_curve(results: list) -> None:
+    """
+    Plots net pipe pressure against commanded RPM, marking the pipe's
+    burst rating and the parser's hardcoded ceiling, so the gap between
+    the naive rule and the real physics is visible at a glance.
+    """
+    rpms = [r.rpm for r in results]
+    pressures = [r.net_pressure_kpa for r in results]
+
+    plt.figure(figsize=(9, 6))
+    plt.plot(rpms, pressures, label="Modeled pipe pressure", color="blue")
+    plt.axhline(
+        PIPE_BURST_PRESSURE_KPA,
+        color="red",
+        linestyle="--",
+        label=f"Burst rating ({PIPE_BURST_PRESSURE_KPA:.0f} kPa)",
+    )
+    plt.axvline(
+        PUMP_RATED_RPM,
+        color="orange",
+        linestyle=":",
+        label=f"Parser's hardcoded ceiling ({PUMP_RATED_RPM:.0f} RPM)",
+    )
+    plt.xlabel("Commanded RPM")
+    plt.ylabel("Net Pressure (kPa)")
+    plt.title("VoltGuard: Pressure vs Commanded RPM")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig("pressure_vs_rpm.png")
+    print("Saved plot to pressure_vs_rpm.png")
+
+
+def main() -> None:
+    print("VoltGuard Physics Engine - Week 1 Baseline\n")
+
+    test_rpms = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000, 4500, 5000, 50000]
+    results = []
+    for rpm in test_rpms:
+        r = simulate_pump_command(rpm)
+        print_result(r)
+        results.append(r)
+
+    print()
+    max_safe = find_max_safe_rpm()
+    print(f"Parser's hardcoded ceiling  : {PUMP_RATED_RPM:.0f} RPM")
+    print(f"Physics-derived real ceiling: {max_safe:.0f} RPM")
+
+    sweep_rpms = list(range(0, 6001, 50))
+    sweep_results = [simulate_pump_command(rpm) for rpm in sweep_rpms]
+    plot_pressure_curve(sweep_results)
+
+
+if __name__ == "__main__":
+    main()
