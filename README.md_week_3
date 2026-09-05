@@ -1,0 +1,74 @@
+# VoltGuard — Week 3: Inline Dropping + Visualizing Physics
+
+## Contents
+
+| File | Deliverable | Description |
+|---|---|---|
+| `Cargo.toml` | — | Rust project manifest |
+| `src/main.rs` | Inline Dropping | IPS engine: holds each parsed Modbus command, queries the physics engine, forwards or drops+alarms based on the verdict, streams telemetry |
+| `src/physics_client.rs` | Inline Dropping | Async client that talks to the Week 2 physics engine |
+| `qt/PhysicsGraphWidget.h` / `.cpp` | Visualizing Physics | Qt Charts widget: real-time predicted-vs-actual line graph |
+
+## Data flow
+
+```
+[Week 1 parser] --JSON--> :8090 --> [Rust IPS engine] --JSON--> :9000 [Week 2 physics engine]
+                                            |
+                                            v verdict: Safe / Catastrophic
+                               forward to PLC   or   drop + alarm
+                                            |
+                                            v telemetry JSON
+                                          :9001 --> [Qt PhysicsGraphWidget]
+```
+
+## Integration points to adapt
+
+1. **Command intake** (`main.rs`, `handle_intake_connection`) — listens on
+   `127.0.0.1:8090` for newline-delimited JSON `ModbusCommand`
+   (`function_code`, `register_addr`, `value`, `timestamp_ms`). Match this
+   to your Week 1 C++/Scapy parser's actual output, or edit the struct.
+
+2. **Physics engine protocol** (`src/physics_client.rs`) — assumes your
+   Week 2 engine is a TCP/JSON service on `127.0.0.1:9000` accepting
+   `{function_code, register_addr, value, id}` and replying with
+   `{verdict, predicted_state, actual_state, reason}`. If your
+   OpenModelica/Python engine exposes something else (REST, files, a
+   C-extension), only this file needs to change.
+
+3. **PLC forwarding** (`main.rs`, `forward_to_plc`) — currently just logs.
+   Wire this to your actual raw-socket/Scapy re-injection.
+
+## Running it locally
+
+```bash
+# Terminal 1: your physics engine (must speak the protocol above)
+python3 physics_engine_server.py
+
+# Terminal 2: the IPS engine
+cargo run --release
+
+# Terminal 3: feed it a test command
+echo '{"function_code":6,"register_addr":40001,"value":50000,"timestamp_ms":0}' | nc 127.0.0.1 8090
+```
+
+Add `PhysicsGraphWidget` into your Week 2 Qt dashboard (as a tab or docked
+panel — requires `QT += charts` in your `.pro` file, or
+`find_package(Qt6 COMPONENTS Charts)` in CMake) and point it at
+`127.0.0.1:9001`. Live points should appear as you feed commands in.
+
+## Proving the sub-10ms latency claim
+
+Every decision logs its round-trip latency in microseconds
+(`latency_us` in the telemetry frame; a WARNING to stderr if a packet
+exceeds the 10ms budget). Capture a run's stderr/stdout plus the Qt
+dashboard's "Decision latency" readout as your evidence for the
+Mid-Project Review's "Simulation Test" requirement.
+
+## Setup
+
+```bash
+cd voltguard-week3
+cargo build --release
+```
+
+Requires Rust (`rustup`) and, for the Qt side, Qt 6 with the Charts module.

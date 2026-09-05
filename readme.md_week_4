@@ -1,0 +1,76 @@
+# VoltGuard — Week 4: Hardware Deployment + Refine & Polish
+
+## Contents
+
+| File | Deliverable | Description |
+|---|---|---|
+| `deploy/deploy_pi.sh` | Hardware Deployment | Configures a Raspberry Pi as a transparent two-NIC bridge (bump-in-the-wire) and installs the IPS engine as a systemd service |
+| `deploy/voltguard.service` | Hardware Deployment | systemd unit that runs the engine at boot and restarts it on failure |
+| `qt/dark_theme.qss` | Refine & Polish | Dark-mode, high-contrast, large-touch-target stylesheet for a factory-floor operator display |
+
+## Prerequisites
+
+You need the Week 3 Rust IPS engine cross-compiled for ARM before running
+the deployment script:
+
+```bash
+# On your build machine (not the Pi):
+rustup target add armv7-unknown-linux-gnueabihf
+cargo install cross --git https://github.com/cross-rs/cross
+cross build --release --target armv7-unknown-linux-gnueabihf
+
+# Copy the resulting binary to the Pi, into this deploy/ folder:
+scp target/armv7-unknown-linux-gnueabihf/release/voltguard-ips pi@<pi-ip>:~/voltguard-week4/deploy/
+```
+
+## Deploying to the Pi
+
+On the Pi itself, as root, from inside the `deploy/` folder:
+
+```bash
+sudo ./deploy_pi.sh
+```
+
+This will:
+1. Install `bridge-utils`, `ebtables`, `iptables-persistent`
+2. Bridge `eth0` + `eth1` into `br0` with **no IP address** — a real
+   bump-in-the-wire is invisible at Layer 3. If you need remote
+   management, add a separate management NIC/Wi-Fi interface, not `br0`.
+3. Disable STP on the bridge (no negotiation delay on an industrial link)
+4. Redirect Modbus/TCP (port 502) traffic into the IPS engine's intake
+   port via `ebtables`/`iptables` — adjust the port/protocol if your
+   target is DNP3 or a non-standard Modbus port
+5. Install and start the `voltguard.service` systemd unit
+
+## Verifying it's running
+
+```bash
+systemctl status voltguard.service
+bridge link show
+journalctl -u voltguard -f
+```
+
+## Applying the dark theme
+
+In your Qt dashboard's `main()`:
+
+```cpp
+QFile styleFile(":/dark_theme.qss"); // or a direct filesystem path
+styleFile.open(QFile::ReadOnly);
+qApp->setStyleSheet(styleFile.readAll());
+```
+
+Widget object names the stylesheet specifically targets:
+- `QLabel#statusSafe` / `QLabel#statusAlarm` — nominal/alarm banners
+- `QPushButton#emergencyStop` — large red e-stop button
+
+Set these with `setObjectName("statusAlarm")` etc. on the relevant widgets
+in your dashboard code.
+
+## Final Review checklist (per the project plan)
+
+- [ ] Compiled, standalone desktop dashboard runs on the operator PC
+- [ ] IPS engine + physics engine deployed on the Pi as a bump-in-the-wire
+- [ ] Dashboard connects to the Pi's telemetry stream and reflects live
+      drops/alarms
+- [ ] Dark theme applied and legible under bright/fluorescent lighting
