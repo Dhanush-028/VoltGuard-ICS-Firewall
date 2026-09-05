@@ -8,7 +8,8 @@ Topology:
 Every command physically travels over a socket to get here. The gateway
 parses it, asks decision_engine for a verdict, and either:
   - ALLOW: opens a connection to the real PLC, forwards the exact bytes,
-    relays the PLC's reply back to the client
+    relays the PLC's reply back to the client, and logs the PLC's real
+    measured pressure alongside the prediction (week 3 addition)
   - DROP: never touches the PLC at all - sends a Modbus exception response
     straight back to the client and logs the alarm
 
@@ -20,8 +21,8 @@ what a real Modbus master/slave conversation looks like on the wire.
 import socket
 import threading
 
-from protocol import parse_frame, build_exception_response
-from decision_engine import inspect_packet
+from protocol import parse_frame, build_exception_response, parse_response
+from decision_engine import inspect_packet, log_verdict
 from mock_plc import HOST, PLC_PORT
 
 GATEWAY_PORT = 5020
@@ -41,7 +42,9 @@ def _handle_client(conn, addr, verbose):
             if not raw:
                 break
 
-            verdict, parsed, physics = inspect_packet(raw)
+            # auto_log=False: we log ourselves below, once we know whether
+            # there's real PLC telemetry to attach to this same row
+            verdict, parsed, physics = inspect_packet(raw, auto_log=False)
 
             if verdict == "MALFORMED":
                 if verbose:
@@ -49,22 +52,31 @@ def _handle_client(conn, addr, verbose):
                 break
 
             if verdict == "ALLOW":
-                if verbose:
-                    print(f"[GATEWAY] ALLOW  rpm={parsed['rpm']:>6}  "
-                          f"predicted={physics.peak_predicted_pressure:8.1f} psi  "
-                          f"-> forwarding to PLC")
                 try:
                     plc_reply = _forward_to_plc(raw)
+                    resp = parse_response(plc_reply)
+                    actual_pressure = resp.get("actual_pressure")
+                    if verbose:
+                        actual_str = f"{actual_pressure:.1f} psi" if actual_pressure is not None else "n/a"
+                        print(f"[GATEWAY] ALLOW  rpm={parsed['rpm']:>6}  "
+                              f"predicted={physics.peak_predicted_pressure:8.1f} psi  "
+                              f"actual={actual_str}  -> forwarded to PLC")
+                    log_verdict("ALLOW", physics, "within physical safety envelope",
+                                actual_pressure=actual_pressure)
                     conn.sendall(plc_reply)
                 except (ConnectionRefusedError, OSError) as e:
                     if verbose:
                         print(f"[GATEWAY] could not reach PLC: {e}")
                     break
             else:  # DROP
+                reason = ("physically impossible sensor reading - rejected regardless of command"
+                          if physics.impossible_state else
+                          f"predicted peak {physics.peak_predicted_pressure:.1f} psi exceeds safety limit")
                 if verbose:
                     print(f"[GATEWAY] DROP   rpm={parsed['rpm']:>6}  "
                           f"predicted={physics.peak_predicted_pressure:8.1f} psi  "
                           f"-> ALARM, command never reached the PLC")
+                log_verdict("DROP", physics, reason)
                 exc = build_exception_response(parsed["transaction_id"], parsed["unit_id"])
                 conn.sendall(exc)
 
@@ -85,4 +97,7 @@ def start_gateway_server(verbose=True):
 
 
 if __name__ == "__main__":
-    start_gateway_server()
+    try:
+        start_gateway_server()
+    except KeyboardInterrupt:
+        print("\n[GATEWAY] shutting down")
