@@ -1,0 +1,17 @@
+[Unit]
+Description=VoltGuard Physics-Aware IPS Engine
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/opt/voltguard/voltguard-ips
+Restart=always
+RestartSec=2
+# Fail loudly if the engine crashes -- an OT firewall going silently down
+# is worse than it never having existed. Consider wiring this into a
+# hardware watchdog / fail-safe relay for a real deployment.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
